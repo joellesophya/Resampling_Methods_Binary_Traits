@@ -1,0 +1,12 @@
+Binary Y but quantitave Y_perm
+Ascertained based on 6-8 cases/family but no ascertainment on Yperm
+100 RV sets w/ 50 markers/set
+Test stat = VT
+EE re-sampling method
+logistic generating model
+
+Obtain p-values from EE resampling method and assess type 1 err.
+
+--> All simulations gave very inflated type 1 error 
+	==> the shape of the histogram suggests that there is an error in the code
+--> To ascertain with conversion of Yperm to binary, could threshold based on predicted pi and the topmost Y_bar pis are converted to 1s

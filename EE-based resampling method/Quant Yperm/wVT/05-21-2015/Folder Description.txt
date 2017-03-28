@@ -1,0 +1,27 @@
+Binary Y but quantitave Y_perm
+Ascertained based on 6-8 cases/family but no ascertainment on Yperm
+100 RV sets w/ 50 markers/set
+Test stat = VT
+EE re-sampling method
+
+** liab: sigma_a^2 = 1, sigma_e^2 = 25
+	--> Correct type 1 error
+		~> Not clear why that would be the case in the presence of ascertainment (need to determine whether it was weak ascertainment, i.e. what is the population prevalence used?)
+			~~> Trait replicate is quantitative and Yperm is such that E(Yperm) = E(Y) so no need to do rejection sampling on Yperm...
+
+** log theta.09: sigma_a^2 = .1
+	~> Pop. prevalence = 34%, Var(p)/Var(Y) = 19%, Tu = .09, Tot= 1.07
+	--> Type 1 error is strongly deflated 
+		== suggest estimated variance is much higher than true one OR the Y replicates have much less correlation than that in Y
+			-->
+		==> Could be due to the low number of Y realizations used (100)
+		==> Poly. add. var. is pretty low in this setting so the type 1 error should not so strongly deviate from nominal level
+		==> Could also be a bug in the code
+	
+** log theta.5: sigma_a^2 = 1
+	~> Pop. prevalence = 35%, Var(p)/Var(Y) = 27%, Tu = .5, Tot= 1.96
+	--> Type 1 error is well-controlled
+		~> Similar to liab. model, still not clear why that would be the case in the presence of (strong) ascertainment
+	--> Because poly. add. var. is bigger here, it suggests that sim above with theta.09 needed more realizations OR error in the code??
+
+==> We still note that the right tail of the p-value histogram still doesn't look uniform (it has a "peak" at 1)	

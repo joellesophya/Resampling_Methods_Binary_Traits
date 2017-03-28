@@ -1,0 +1,162 @@
+
+R version 3.2.2 (2015-08-14) -- "Fire Safety"
+Copyright (C) 2015 The R Foundation for Statistical Computing
+Platform: x86_64-redhat-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> # Naive permutation of trait
+> # Quantitative Yperm
+> # With VT quant
+> # NO causal genes
+> # No ascertainment
+> # High prev setting (30-33%)
+> # Vary add_var (0-20% var(pi)/var(Y))
+> 
+> pckg_list <- c("mvtnorm","MCMCglmm", "parallel", "matrixStats", "Matrix", "data.table","reshape")
+> dummy <- lapply(pckg_list, require, character.only = TRUE)
+Loading required package: mvtnorm
+Loading required package: MCMCglmm
+Loading required package: Matrix
+Loading required package: coda
+Loading required package: ape
+Loading required package: parallel
+Loading required package: matrixStats
+matrixStats v0.50.2 (2016-04-24) successfully loaded. See ?matrixStats for help.
+Loading required package: data.table
+Loading required package: reshape
+
+Attaching package: ‘reshape’
+
+The following object is masked from ‘package:data.table’:
+
+    melt
+
+The following object is masked from ‘package:Matrix’:
+
+    expand
+
+> dyn.load("EE_Ceramic")
+> 
+> # Parameters for simulation
+> N_fam <- 45
+> n_person <- 22
+> n_asc <- 0 # Degree of ascertainment
+> n_total <- N_fam * n_person
+> method_name <- "VT"   # VT or ws
+> Yperm_type <- "quant"  #quant or bin
+> n_perm <- 20e3
+> ncov <- 4 # Number of covariates that are in both generating & fitted model = intercept, age, sex , Z
+> nRVs <- length(fread("../haplo.txt", nrows = 1)) # Number of columns (rvs) in haplofile	
+> nsets <- 150 # Number of RV sets/realization in analysis
+> n_marker <- 50 # Number of rvs/set
+> 
+> # Make pedigree
+> ped1 <- data.table(fam = rep(1:N_fam, each = n_person), ind = 1:n_total, fa = NA, mo = NA)
+> fa_ind <- c(NA,NA,NA,1,1,NA,1,NA,1,NA,4,4,4,6,6,6,8,8,10,10,10,10)
+> mo_ind <- c(NA,NA,NA,2,2,NA,2,NA,2,NA,3,3,3,5,5,5,7,7,9,9,9,9)
+> ped1[,`:=`(mo = (rep(mo_ind, N_fam) + n_person*rep(0:(N_fam-1), each = n_person)), fa = (rep(fa_ind, N_fam)+ n_person * rep(0:(N_fam-1), each = n_person)))]
+> ped1[is.na(ped1)] <- 0
+> write.table(ped1,'pedigree',row.names=FALSE, col.names=FALSE,sep='\t')
+> sex <- rep(c(1,2,2,1,2,1,2,1,2,1,2,1,1,2,1,2,1,2,2,1,2,1),N_fam) #constant
+> 
+> # Generate relatedness data
+> phi <- as.matrix(fread("add_phi_mat_n22")); colnames(phi) <- 1:n_person
+> setnames(kin <- data.table(melt(diag(N_fam)%x%phi)), 1:3, c("person2","person1","kincoef"))
+> # setcolorder(kin, c("person1","person2","kin"))
+> kin <- kin[person1<=person2 & ((person1-1)%/%n_person) == ((person2-1)%/%n_person)]
+> kin[, fam := (person1-1)%/%n_person+ 1]
+> # For CERAMIC -- same for all realizations
+> kin[kincoef == 1, kincoef:= 0]; kin[, kincoef := kincoef/2]
+> write.table(kin[,.(fam, person1, person2, kincoef)],'grmfile', row.names=F, col.names=F,sep=' ')
+> 
+> dummy <- suppressMessages(crossprod( Matrix(diag(2) %x% phi), diag(2*n_person)))
+> dummy <- suppressMessages(crossprod(tcrossprod(Diagonal(2) %x% chol(phi), diag(sqrt(1:(2*n_person)))), eigen(dummy)$ve)); rm(dummy) ## Suppress all future 
+Note: method with signature ‘Matrix#matrix’ chosen for function ‘tcrossprod’,
+ target signature ‘dtTMatrix#matrix’.
+ "TsparseMatrix#ANY" would also be valid
+Note: method with signature ‘TsparseMatrix#Matrix’ chosen for function ‘tcrossprod’,
+ target signature ‘dtTMatrix#ddiMatrix’.
+ "sparseMatrix#diagonalMatrix" would also be valid
+> 
+> gendrop <- function (parentmat, MAF) { # parentmat is matrix of parental info
++ 	nfound <- sum(is_found <- parentmat[,fa + mo] == 0)
++ 	npeople <- nrow(parentmat)
++ 	haplos <- matrix(0, npeople, 2) # Assign haplotype to each individual in the pedigree
++ 	haplos[is_found,] <- matrix(1:(2 * nfound), nfound, 2, byrow=T)
++ 
++ 	trchrom = matrix(sample(1:2, 2 * (npeople - nfound) , replace = T), (npeople - nfound), 2)
++ 	for (i in (1:npeople)[!is_found]) {
++ 		#/* When both parents are in the pedigree drop alleles down the pedigree */
++ 		#/* Randomly choose chrom. 0 or 1 to transmit to kid at each locus
++ 			haplos[i,] <- sapply(1:2, function(a) haplos[parentmat[i][[a]], trchrom[which((1:npeople)[!is_found] == i), a]])
++ 	}
++ 	state <- as.numeric(runif(2 * nfound) < MAF) #1 if minor, 0 if major allele
++ 	genos <- state[haplos]
++ 	genos <- genos[1:npeople] + genos[-(1:npeople)] 
++ 	return(genos) # Vector of MAC counts
++ }
+> 
+> runme = function (dummy, Tu, Tot)
++ {
++ 	write(dummy, "iteration_track.txt")
++ 	add_var <- Tu * Tot
++ 	betas <- c(.05, 1, .5)
++ 	old_v_xb <- sum(c(363.6669,.25,1) * betas^2)
++ 	S_XB <- sqrt(Tot * (1 - Tu) / old_v_xb) # Ratio of target variance to var(X)
++ 	betas <- betas * S_XB
++ 	LG <- log(1) # NONE -- increase in the odds of being a case
++ 
++ 	# Covariates in generating model
++ 	int <- qlogis(0.3) - sum(betas * c(31.86, 1.5, 0)) - LG * .1425  # Prevalence - b * E(X) - lambda * .1425
++ 	# G1 <- gendrop( ped1[, .(fa,mo)], 0.1 ) # Assumes same pedigree structure across families
++ 	# G2 <- gendrop( ped1[, .(fa,mo)], 0.5 )
++ 	U <- c(t(rmvnorm(N_fam, sigma = add_var * phi)))
++ 	age <- rep(c(73,75,46,43,40,46,40,43,47,51,18,21,15,15,12,9,13,17,24,21,18,14), N_fam) + runif(n_total, -1.5, 1.5)
++ 	Z <- rnorm(n_total)
++ 	###--###
++ 	covars <- int + U  +	cbind(age, sex, Z) %*% betas #+ LG * ((G1 > 0) & (G2 > 0)) 
++ 	
++ 	Y <- c(sapply(1:N_fam, function(i_fam){
++ 		Y_f <- -5
++ 		while(sum(Y_f) < n_asc) Y_f <- rbinom(n_person, size = 1, prob = plogis(covars[1:n_person + (i_fam - 1) * n_person]))
++ 		return(Y_f)
++ 	}))
++ 	
++ 	fam_data <- data.table(ped1, sex, Y, age, Z)
++ 	xi <- 0 
++ 	est_beta <- betas
++ 	mu_y <- rep(0, n_total)
++ 	delt <- rep(0, n_total - ncov)
++ 	pre_mult_mat <- matrix(0, n_total, n_total - ncov)
++ 	
++ 	pvalsEE <-.Call("VT_analysis", Y = as.double(fam_data[,Y]), ncov = as.integer(ncov), mu_Y = as.double(mu_y), delta = as.double(delt), GCV_mat = as.double(unlist(t(pre_mult_mat))), nperm = as.integer(n_perm), method = as.character(method_name), Yperm_type = as.integer(ifelse(Yperm_type != "quant", 1, 0)), nRVs = as.integer(nRVs), nsets = as.integer(nsets), n_marker = as.integer(n_marker))
++ 	
++ 	return(list(Type1Error = pvalsEE, herit = xi))
++ }
+> 
+> ############################ 
+> ################### Analysis
+> M = data.frame(Tu = seq(0,1,.2), Tot = c(1.1,1.2,1.2,1.3,1.3,1.3))
+> # M = data.frame(Tu = 0, Tot = 0)
+> n_M = nrow(M)
+> # Will be a list (over Tu/Te) of a list (over rep) of matrices (GMMAT and MCMC)
+> res = rep(list(list()), n_M) 
+> n_rep = 200
+> 
+> for(i in 1:n_M) {
++ 	res[[i]] = mclapply(1:n_rep, runme, mc.cores = 16, Tu= M$Tu[i], Tot = M$Tot[i])
++ 	save.image() #Save the res object
++ }

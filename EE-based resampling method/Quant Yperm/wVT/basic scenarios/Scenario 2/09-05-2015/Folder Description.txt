@@ -1,0 +1,12 @@
+Binary Y but quantitave Y_perm
+No ascertainment
+100 RV sets w/ 50 markers/set
+Test stat = VT
+EE re-sampling method
+
+Scenario 2:
+
+Scenario 4: No covs and no add_var
+	--> A bug is in the code as estimated type 1 error is too low
+	
+Scenario 6:

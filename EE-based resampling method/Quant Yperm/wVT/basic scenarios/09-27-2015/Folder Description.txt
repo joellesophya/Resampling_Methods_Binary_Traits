@@ -1,0 +1,21 @@
+150 Y realizations
+Binary Y but binary Y_perm based on whole sample
+Ascertainment based on 6-8 cases/family
+150 RV sets w/ 50 markers/set
+Test stat = VT
+EE re-sampling method
+
+** Scenario 2: sigma_a^2 = 0 and assume xi=0 in CARAT (ie logistic regression)
+	~> Pop. prevalence = 33%, Var(p)/Var(Y) = 18%, Tu = 0, Tot= 0.96
+	--> Type 1 error is strongly deflated 
+		~> No random effect so all the variation in generation step comes from Bernouilli error so w/o asc most families would have about 7 affected
+			= By adding ascertainment, we are making #aff in each family more variable
+			!> But for Y replicates, since we are using xi=0, they will only deviate by their mean because of Bernouilli error so they will be less variable in the #aff compared to Y
+				==> Correlation is stronger in Yrep 
+				==> Will lead to deflated type 1 error
+			!!> This conclusion only applies when sigma_a^2 = xi = 0 so Y is less variable (-- only due to Bernouilli error)
+			
+** Scenario 4: sigma_a^2 = 0 (covariates present)
+	~> Pop. prevalence = 33%, Var(p)/Var(Y) = 18%, Tu = 0, Tot= 0.96
+	--> Type 1 error is deflated
+			= same results as those obtained in parametric bootstrap with 6-8 ascertainment

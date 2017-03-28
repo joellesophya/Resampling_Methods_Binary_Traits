@@ -1,0 +1,15 @@
+Binary Y but quantitave Y_perm
+No ascertainment
+100 RV sets w/ 50 markers/set
+Test stat = VT
+EE re-sampling method
+
+	
+Scenario 6 theta20: Var(pi) = 5% Var(Y), Prevalence at 32%
+Scenario 6 theta40: Var(pi) = 7% Var(Y), Prevalence at 32%
+Scenario 6 theta60: Var(pi) = 22% Var(Y), Prevalence at 35%
+
+
+%% Note %% theta40 and h60 are about the same but type 1 error is inflated in h60 whereas it is deflated in theta40	
+			--> Points to: Not enough Y replicates so the results are just due to sampling variability
+						   Error in the code

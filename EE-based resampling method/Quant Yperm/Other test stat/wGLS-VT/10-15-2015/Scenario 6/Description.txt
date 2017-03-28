@@ -1,0 +1,1 @@
+No covariates in generating model
