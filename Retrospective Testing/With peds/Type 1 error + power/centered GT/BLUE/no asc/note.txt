@@ -1,0 +1,2 @@
+For cond_mode and mean_cond, we are using Gt(Y-mu) where mu is estimated conditional on random effect
+So we are removing part of the signal from Y by using the "conditional residuals"

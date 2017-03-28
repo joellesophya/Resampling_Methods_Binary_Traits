@@ -1,0 +1,102 @@
+library(parallel)
+library(reshape)
+
+# Parameters for simulation
+n_total <- 2000; n_G <- 10000
+F = .01 # fixation index
+maf_W1 <- .1
+maf_W1_pop1 <- rbeta(1, maf_W1 * (1 - F)/F, (1 - maf_W1) * (1 - F)/F)
+maf_W1_pop2 <- rbeta(1, maf_W1 * (1 - F)/F, (1 - maf_W1) * (1 - F)/F)
+maf_W2 <- .3
+maf_W2_pop1 <- rbeta(1, maf_W2 * (1 - F)/F, (1 - maf_W2) * (1 - F)/F)
+maf_W2_pop2 <- rbeta(1, maf_W2 * (1 - F)/F, (1 - maf_W2) * (1 - F)/F)
+
+check_non_poly<- function(G, p_i1, p_i2, n_pop){
+	n_total <- n_pop * 2
+	tol <- 1e-6
+	if (length(G) == 0) return(1)
+	if (is.matrix(G)){
+		indexes <- (1:dim(G)[2])[(non_poly <- apply(G, 2, sd) == 0 & findInterval(p_i1, c(tol, 1- tol)) == 1 & findInterval(p_i2, c(tol, 1- tol)) == 1 )]
+		if (length(indexes) > 0){
+			G[1:n_pop,indexes] <- matrix(rbinom(n_pop * length(indexes), 2, rep(p_i1[indexes],n_pop)), n_pop, length(indexes), byrow = TRUE)
+			G[(n_pop+1):n_total,indexes] <- matrix(rbinom(n_pop * length(indexes), 2, rep(p_i2[indexes],n_pop)), n_pop, length(indexes), byrow = TRUE)
+			G[,indexes] <- check_non_poly(G[,indexes], p_i1[indexes], p_i2[indexes], n_pop)
+		} else return(G)
+	} else if (sd(G) == 0){
+		G <- rbinom(n_total, 2, rep(c(p_i1,p_i2), each = n_pop))
+		G <- check_non_poly(G, p_i1, p_i2, n_pop)
+	} else return(G)
+	return(G)
+}
+
+get_G <- function(n_G, n_tot){ # n_G is number of markers (ie 10000)
+	p_i <- 	runif(n_G)
+	p_i1 <- rbeta(n_G, p_i * (1 - F)/F, (1 - p_i) * (1 - F)/F)
+	p_i2 <- rbeta(n_G, p_i * (1 - F)/F, (1 - p_i) * (1 - F)/F)
+	G_pop1 <- t(matrix(rbinom(n_G * n_tot / 2, 2, rep(p_i1, n_tot / 2)), n_G, n_tot / 2))
+	G_pop2 <- t(matrix(rbinom(n_G * n_tot / 2, 2, rep(p_i2, n_tot / 2)), n_G, n_tot / 2))
+	G <- rbind(G_pop1, G_pop2)
+
+	G <- check_non_poly(G, p_i1, p_i2, n_tot / 2)
+	return(G)
+}
+
+get_GRM <- function(G){
+	p <- colMeans(G) / 2
+	Gsc <- scale(G, center = 2 * p, scale = sqrt(2 * p * (1-p)) )
+	return(tcrossprod(Gsc) /ncol(Gsc))
+}
+
+non_psd <- TRUE
+while(non_psd){
+	G_mat <- get_G(n_G, n_total)
+	G_mat_nonpoly <- apply(G_mat,2,var) > 0 
+	paste("There were", n_G - dim(G_mat[, G_mat_nonpoly])[2], "non-polymorphic variants")
+	GRM <- get_GRM(G_mat[, G_mat_nonpoly])
+	Prec <- tryCatch(chol2inv(chol(GRM)), error = function(dummy) return(FALSE))
+	if(is.matrix(Prec)) non_psd <- FALSE
+}
+
+get_sim_pop <- function(n_total, maf_W1, maf_W2, ncase, ncont, int, LG, betas){
+	n_sim <- n_total * 10
+	mean_W <- (1 - (1-maf_W1)^2) * (1- (1 - maf_W2)^2)
+	int <- int - LG * mean_W  # Subtract LG * E(epistatis)
+	sim_data = data.frame(sex = rbinom(n_sim, 1, .5),
+	age = runif(n_sim, 20, 65),
+	Z = rnorm(n_sim),
+	W1 = rbinom(n_sim, 2, maf_W1),
+	W2 = rbinom(n_sim, 2, maf_W2))
+	sim_data$pis <- with(sim_data, plogis(int + LG * ((W1 > 0) & (W2 > 0)) + sex * betas[1] + age * betas[2] + Z * betas[3]))
+	sim_data$Y <- rbinom(n_sim, 1, prob = sim_data$pis)
+	# cases <- sim_data$Y == 1
+	# sim_data <- rbind(sim_data[cases,][1:ncase,], sim_data[!cases,][1:ncont,])
+	return(sim_data)
+}
+
+runme <- function (var_xb, prop_case1, e_lamb, prev)
+{
+	ncase1 <- prop_case1 * n_total/2
+	ncont1 <- n_total/2 - ncase1
+	ncase2 <- n_total/2 - ncase1
+	ncont2 <- n_total/2 - ncont1
+	
+	betas <- sqrt( (var_xb / 3) / c(.25, 168.75, 1)) # (sex, age, Z)
+	LG <- log(e_lamb) # increase in penetrance
+	interc <- qlogis(prev) - sum(betas * c(.5,42.5,0)) # logit(Preval) - b * E(X) 
+	
+	# Sample from population 1 -- no ascertainment done
+	sample_data_pop1 <- get_sim_pop(n_total, maf_W1_pop1, maf_W2_pop1, ncase1, ncont1, interc, LG, betas)
+	while(any(is.na(sample_data_pop1$Y))){
+		sample_data_pop1 <- get_sim_pop(n_total, maf_W1_pop1, maf_W2_pop1, ncase1, ncont1, interc, LG, betas)
+	} 
+	
+	# Sample from population 2 -- no ascertainment done
+	sample_data_pop2 <- get_sim_pop(n_total, maf_W1_pop2, maf_W2_pop2, ncase2, ncont2, interc, LG, betas)
+	while(any(is.na(sample_data_pop2$Y))){
+		sample_data_pop2 <- get_sim_pop(n_total, maf_W1_pop2, maf_W2_pop2, ncase2, ncont2, interc, LG, betas)
+	} 
+	sample_data <- rbind(sample_data_pop1, sample_data_pop2)
+	rm(sample_data_pop1, sample_data_pop2)
+	
+	with(sample_data, c(Penetrance = tapply(Y, (W1 > 0) & (W2 > 0), mean), muY = mean(Y), Sum_vars = var(pis)+mean(pis*(1-pis)),Tot_var = var(Y), Prop_cov_var = var(pis)/(var(pis)+ mean(pis*(1-pis))) ) )
+}

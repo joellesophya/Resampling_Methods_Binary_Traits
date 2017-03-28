@@ -1,0 +1,100 @@
+
+R version 3.3.1 (2016-06-21) -- "Bug in Your Hair"
+Copyright (C) 2016 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(mvtnorm)
+> library(MCMCglmm)
+Loading required package: Matrix
+Loading required package: coda
+Loading required package: ape
+> 
+> runme = function (dummy, famsize)
++ {
++   N_fam <- famsize;
++   n_person <- 22 ;
++   n_total <- N_fam * n_person
++   
++   # Make pedigree
++  ped1 <- data.frame(fam = NA, ind = 1:n_total, fa = NA, mo = NA)
++ fa_ind <- c(NA,NA,NA,1,1,NA,1,NA,1,NA,4,4,4,6,6,6,8,8,10,10,10,10)
++ mo_ind <- c(NA,NA,NA,2,2,NA,2,NA,2,NA,3,3,3,5,5,5,7,7,9,9,9,9)
++ ped1[,c('mo','fa')] <- cbind(rep(mo_ind, N_fam)+ n_person*rep(0:(N_fam-1), each = n_person),
++                              rep(fa_ind, N_fam)+ n_person*rep(0:(N_fam-1), each = n_person))
++ Prec <- inverseA(ped1[,c('ind','mo','fa')])$Ainv
++ ped1[is.na(ped1)] <- 0
++ ped1$fam <- rep(1:N_fam, each = n_person)
++   
++   # Generate data
++   phi <- as.matrix(read.table("add_phi_mat_n22")); colnames(phi) <- 1:n_person
++   phi_inv <- solve(phi) #22x22 matrix
++   sex <- rep(c(1,2,2,1,2,1,2,1,2,1,2,1,1,2,1,2,1,2,2,1,2,1), N_fam) 
++   
++   add_v <- 5.8 * .2
++   beta<- sqrt(5.8 * (1 - .2) / .25) 
++   int <- qlogis(0.05) - beta * 1.5
++   U <- c(t(rmvnorm(N_fam, sigma = add_v * phi))) 
++   Y <- rbinom(n_total, size = 1, prob = plogis(int + beta * sex + U))
++   
++   fam_data = data.frame(Y=Y, X=sex, idu = 1:n_total)
++    
++   ##MCMC glmm
++   prior1 <- list(R = list(V = 1, fix=1),
++ 		G = list(G1 = list(V = 1, nu = 1, alpha.mu=0, alpha.V=10^2)))
++   mMCMC<-MCMCglmm(Y ~ 1 + X, random =~idu, family = "categorical",
++                ginverse = list(idu = Prec), prior=prior1,
++                data = fam_data, verbose = F, nitt=300e3, thin=500, burnin=15e3)
++   ck <- ((16*sqrt(3))/(15*pi))^2
++   m_est = c(posterior.mode(mMCMC$VCV[,1]), colMeans(mMCMC$VCV)[1])/(1 + ck)
++   return (m_est)
++ }
+> 
+> 
+> M = c(50,150)
+> n_M = length(M)
+> res = rep(list(list()), n_M)
+> n = 150
+> target = 5.8*.2
+> 
+> library(parallel)
+> for(i_famsiz in 1:n_M) {
++   res[[i_famsiz]] = mclapply(1:n, runme, mc.cores = 6, famsize=M[i_famsiz])
++ }
+> 
+> body <- tail(strsplit(getwd(),"/")[[1]],1); body <- paste("Folder: ", body) 
+> system(paste("echo \"",body,"\" | mailx -s \"Sim done\" joelle.mbatchou@gmail.com"), ignore.stdout = T, ignore.stderr = T)
+> 
+> # pdf("mode_median_est_var_MCMC.pdf", height=6, width=8)
+> # est_vec=c(); famsizes <- c()
+> # for(i in 1:n_M) {
+>   # for(j in 1:n)  {
+>     # est_vec <- rbind(est_vec, res[[i]][[j]])
+>     # famsizes <- append(famsizes, M[i])
+>   # }
+> # }
+> 
+> # boxplot(c(est_vec)~c(famsizes-5, famsizes+5), xaxt="n", col = rep(c(3,5),n_M),
+>         # main = "Posterior estimates for the variance for MCMCglmm")
+> # axis(1, at = 2*(1:n_M)-.5, labels = M)
+> # legend('topright', legend = c("Mode", "Median"), col=c(3,5), bty = "n", pch =16, cex=.8)
+> # abline(h = target, lwd=2, lty = 2, col=4)
+> # dev.off()
+> 
+> 
+> proc.time()
+      user     system    elapsed 
+461049.414     52.136  99025.563 
