@@ -1,4 +1,0 @@
-EE method
-logistic generating model
-
-Compare p-values from EE resampling method to those from ASTOR test stat.

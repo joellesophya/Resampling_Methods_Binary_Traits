@@ -1,7 +1,0 @@
-/usr/bin/nohup: ignoring input
-
-WARNING: User should make sure these counts are as expected:
-n_fam = 45
-n_RV_marker/site = 50
-n_total = 990
-n_cov = 3
